@@ -1,7 +1,7 @@
 import CryptoJS from 'crypto-js';
 
-// Shared secret key (hardcoded for simplicity; in real, use key management)
-export const secretKey = 'eplq-secret-key-123';
+// Now comes from .env.local (NEXT_PUBLIC_ so it's available client-side)
+export const secretKey = process.env.NEXT_PUBLIC_ENCRYPTION_KEY || 'eplq-secret-key-123';
 
 // Encrypt POI data
 export function encryptPOI(poi) {
@@ -23,7 +23,7 @@ export function decryptPOI(encrypted) {
 
 // Haversine distance (in km)
 export function haversine(lat1, lng1, lat2, lng2) {
-  const R = 6371; // Earth radius in km
+  const R = 6371;
   const dLat = (lat2 - lat1) * (Math.PI / 180);
   const dLng = (lng2 - lng1) * (Math.PI / 180);
   const a =
