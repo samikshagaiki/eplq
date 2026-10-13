@@ -1,6 +1,7 @@
 # EPLQ — Efficient Privacy-Preserving Location-Based Query
 
 A deployable Next.js + Firebase prototype for encrypted Points of Interest (POIs) and browser-side circular range queries.
+Deployed Link : https://eplq-hub.vercel.app/
 
 ## What this prototype does
 
