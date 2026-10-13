@@ -1,95 +1,41 @@
-'use client';
+"use client";
 
+import Link from 'next/link';
 import { useState } from 'react';
-import { signInWithEmailAndPassword } from 'firebase/auth';
+import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { useRouter } from 'next/navigation';
 import { auth, db } from '@/lib/firebase';
 
-export default function Login() {
+export default function LoginPage() {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const router = useRouter();
 
-const [email, setEmail] = useState('');
-const [password, setPassword] = useState('');
-const [error, setError] = useState('');
-const router = useRouter();
-
-const handleLogin = async (e) => {
-e.preventDefault();
-setError('');
-
-
-try {
-  const userCredential = await signInWithEmailAndPassword(auth, email, password);
-
-  const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
-
-  const role = userDoc.data()?.role || 'user';
-
-  if (role === 'admin') {
-    router.push('/admin/upload');
-  } else {
-    router.push('/user/search');
+  async function handleSubmit(event) {
+    event.preventDefault(); setError(''); setBusy(true);
+    try {
+      const credential = await signInWithEmailAndPassword(auth, email.trim(), password);
+      const profile = await getDoc(doc(db, 'users', credential.user.uid));
+      if (!profile.exists() || !['admin', 'user'].includes(profile.data().role)) {
+        await signOut(auth); throw new Error('Account profile is missing or invalid. Contact the project administrator.');
+      }
+      router.replace(profile.data().role === 'admin' ? '/admin/upload' : '/user/search');
+    } catch (err) {
+      console.error('Login failed:', err.code || err.message);
+      const messages = {
+        'auth/invalid-credential': 'Email or password is incorrect.',
+        'auth/user-not-found': 'No account exists with this email.',
+        'auth/wrong-password': 'Email or password is incorrect.',
+        'auth/invalid-email': 'Enter a valid email address.',
+        'auth/too-many-requests': 'Too many attempts. Try again later.',
+        'auth/network-request-failed': 'Network error. Check your connection.',
+      };
+      setError(messages[err.code] || err.message || 'Unable to sign in.');
+    } finally { setBusy(false); }
   }
 
-} catch (err) {
-  setError('Invalid email or password');
-  console.error(err);
-}
-
-
-};
-
-return ( <div className="min-h-screen flex items-center justify-center bg-gray-100">
-
-  <div className="bg-white shadow-xl rounded-2xl p-10 w-full max-w-md">
-
-    <h2 className="text-3xl font-bold text-center text-blue-600 mb-6">
-      EPLQ Login
-    </h2>
-
-    <form onSubmit={handleLogin} className="space-y-5">
-
-      <input
-        type="email"
-        placeholder="Email"
-        value={email}
-        onChange={(e)=>setEmail(e.target.value)}
-        className="w-full border px-4 py-3 rounded-lg"
-        required
-      />
-
-      <input
-        type="password"
-        placeholder="Password"
-        value={password}
-        onChange={(e)=>setPassword(e.target.value)}
-        className="w-full border px-4 py-3 rounded-lg"
-        required
-      />
-
-      {error && (
-        <p className="text-red-500 text-center">{error}</p>
-      )}
-
-      <button
-        type="submit"
-        className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700"
-      >
-        Login
-      </button>
-
-    </form>
-
-    <p className="text-center mt-6 text-gray-600">
-      Don't have an account?
-      <a href="/register" className="text-blue-600 ml-1">
-        Register
-      </a>
-    </p>
-
-  </div>
-
-</div>
-
-);
+  return <main className="auth-page"><section className="auth-card"><span className="eyebrow">WELCOME BACK</span><h1 className="auth-title" style={{marginTop:18}}>Sign in to EPLQ</h1><p className="auth-subtitle">Sign in with your registered account. EPLQ checks your assigned role and opens the matching workspace. Admin accounts must be enabled by the project owner.</p>{error && <div role="alert" className="status status-error">{error}</div>}<form className="form-stack" onSubmit={handleSubmit}><label htmlFor="email">Email address</label><input id="email" type="email" value={email} onChange={(e)=>setEmail(e.target.value)} autoComplete="email" required/><label htmlFor="password">Password</label><input id="password" type="password" value={password} onChange={(e)=>setPassword(e.target.value)} autoComplete="current-password" required/><button className="primary-button" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</button></form><p className="form-help">Administrator? Use your admin account here too. After sign-in, accounts assigned the <code>admin</code> role are redirected to the admin console. Public registration cannot create admin accounts.</p><p className="auth-footer">New to EPLQ? <Link href="/register">Create an account</Link></p></section></main>;
 }

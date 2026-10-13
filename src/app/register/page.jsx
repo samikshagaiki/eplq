@@ -1,96 +1,44 @@
-'use client';
+"use client";
 
+import Link from 'next/link';
 import { useState } from 'react';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 import { useRouter } from 'next/navigation';
 import { auth, db } from '@/lib/firebase';
 
-export default function Register() {
+export default function RegisterPage() {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const router = useRouter();
 
-const [email, setEmail] = useState('');
-const [password, setPassword] = useState('');
-const [role, setRole] = useState('user');
-const router = useRouter();
+  async function handleSubmit(event) {
+    event.preventDefault(); setError(''); setSuccess(''); setBusy(true);
+    try {
+      const credential = await createUserWithEmailAndPassword(auth, email.trim(), password);
+      await setDoc(doc(db, 'users', credential.user.uid), {
+        uid: credential.user.uid,
+        email: credential.user.email,
+        role: 'user',
+        createdAt: new Date().toISOString(),
+      });
+      await signOut(auth);
+      setSuccess('Account created. You can now sign in.');
+      setTimeout(() => router.push('/login'), 700);
+    } catch (err) {
+      console.error('Registration failed:', err.code || err.message);
+      const messages = {
+        'auth/email-already-in-use': 'This email is already registered.',
+        'auth/invalid-email': 'Enter a valid email address.',
+        'auth/weak-password': 'Choose a password with at least 8 characters.',
+        'auth/network-request-failed': 'Network error. Check your connection.',
+      };
+      setError(messages[err.code] || err.message || 'Unable to create account.');
+    } finally { setBusy(false); }
+  }
 
-const handleRegister = async (e) => {
-e.preventDefault();
-
-try {
-  const userCredential = await createUserWithEmailAndPassword(
-    auth,
-    email,
-    password
-  );
-
-  const user = userCredential.user;
-
-  await setDoc(doc(db, 'users', user.uid), {
-    email,
-    role
-  });
-
-  console.log('User registered:', user.uid);
-
-  router.push('/login');
-
-} catch (error) {
-  console.error('Registration error:', error);
-  alert('Registration failed');
-}
-
-
-};
-
-return ( <div className="min-h-screen flex items-center justify-center bg-gray-100">
-
-  <div className="bg-white shadow-xl rounded-2xl p-10 w-full max-w-md">
-
-    <h2 className="text-3xl font-bold text-center text-blue-600 mb-6">
-      Create EPLQ Account
-    </h2>
-
-    <form onSubmit={handleRegister} className="space-y-5">
-
-      <input
-        type="email"
-        placeholder="Email"
-        value={email}
-        onChange={(e)=>setEmail(e.target.value)}
-        className="w-full border px-4 py-3 rounded-lg"
-        required
-      />
-
-      <input
-        type="password"
-        placeholder="Password"
-        value={password}
-        onChange={(e)=>setPassword(e.target.value)}
-        className="w-full border px-4 py-3 rounded-lg"
-        required
-      />
-
-      <select
-        value={role}
-        onChange={(e)=>setRole(e.target.value)}
-        className="w-full border px-4 py-3 rounded-lg"
-      >
-        <option value="user">User</option>
-        <option value="admin">Admin</option>
-      </select>
-
-      <button
-        type="submit"
-        className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700"
-      >
-        Register
-      </button>
-
-    </form>
-
-  </div>
-
-</div>
-
-);
+  return <main className="auth-page"><section className="auth-card"><span className="eyebrow">CREATE YOUR ACCOUNT</span><h1 className="auth-title" style={{marginTop:18}}>Join EPLQ</h1><p className="auth-subtitle">Create a user account to search for nearby points of interest privately.</p>{error && <div role="alert" className="status status-error">{error}</div>}{success && <div role="status" className="status status-success">{success}</div>}<form className="form-stack" onSubmit={handleSubmit}><label htmlFor="email">Email address</label><input id="email" type="email" value={email} onChange={(e)=>setEmail(e.target.value)} autoComplete="email" required/><label htmlFor="password">Password</label><input id="password" type="password" value={password} onChange={(e)=>setPassword(e.target.value)} autoComplete="new-password" minLength={8} required/><p className="form-help">New accounts are always created with the user role. An administrator must be assigned manually by the project owner.</p><button className="primary-button" disabled={busy}>{busy ? 'Creating account…' : 'Create account'}</button></form><p className="auth-footer">Already registered? <Link href="/login">Sign in</Link></p></section></main>;
 }

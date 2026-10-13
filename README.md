@@ -1,179 +1,120 @@
-EPLQ: Efficient Privacy-Preserving Location-Based Query
-Overview
-EPLQ (Efficient Privacy-Preserving Location-Based Query) is a web application designed to provide secure location-based services (LBS) while preserving user privacy. It allows admins to upload encrypted Points of Interest (POIs) and users to search for nearby POIs without revealing their location to the server. The application uses client-side decryption and filtering to ensure privacy, with data stored securely in Firebase Firestore.
-Features
+# EPLQ — Efficient Privacy-Preserving Location-Based Query
 
-Admin Module: Register, login, and upload encrypted POIs (name, latitude, longitude, description).
-User Module: Register, login, and search for POIs within a specified range by decrypting and filtering locally.
-Privacy: User location is never sent to the server; POIs are encrypted in the cloud.
-Technologies: Next.js (React framework), Firebase (auth and Firestore), CryptoJS (AES encryption), Tailwind CSS (styling).
-Deployment: Hosted on Vercel for scalability and ease of access.
+A deployable Next.js + Firebase prototype for encrypted Points of Interest (POIs) and browser-side circular range queries.
 
-Prerequisites
+## What this prototype does
 
-Node.js (v18 or higher)
-Firebase account (free tier)
-GitHub account for version control
-Vercel account for deployment (optional)
+- Firebase Authentication with user registration and role-based access.
+- Public registration always creates a `user`; an administrator is assigned manually by the project owner.
+- Admin-only API routes upload and delete POI records.
+- POI details are encrypted in the browser using Web Crypto AES-256-GCM with a PBKDF2-SHA-256-derived key, a unique salt, and a unique IV per record.
+- Firestore stores the encrypted payload and operational metadata; the server does not decrypt POI details.
+- Users download ciphertext, decrypt it locally with a shared data passphrase, and run category/radius filtering in their browser.
+- The user's coordinates, search radius, and category filter are not sent to the EPLQ API.
+- Haversine distance is used for exact circular-range membership; a client-side quadtree narrows spatial candidates before exact checks.
+- Invalid ciphertext or a wrong passphrase is rejected/skipped rather than shown as a valid result.
 
-Setup Instructions
+## Research scope and honest limitations
 
-Clone the Repository:
-git clone https://github.com/yourusername/eplq-project.git
-cd eplq-project
+The supplied research problem statement describes predicate-only encryption for an inner-product range predicate and a privacy-preserving tree index. No full cryptographic construction or research paper was supplied. This implementation therefore **does not claim to implement the original EPLQ predicate-only encryption scheme**. AES-GCM protects the confidentiality/integrity of each POI payload, but authorized users who know the shared passphrase can decrypt all downloaded POIs. The quadtree is built client-side after decryption; it is not an encrypted or server-side privacy-preserving index. The app downloads all ciphertext records, so the index optimizes local repeated spatial filtering rather than database retrieval. These are prototype limitations, not guarantees of the original research scheme.
 
+## Requirements
 
-Install Dependencies:
-npm install
+- Node.js 20.9+ (recommended for Next.js 16)
+- Firebase project with Email/Password Authentication enabled
+- Firestore database
+- Firebase service account credentials for Next.js API routes
 
+## Setup
 
-Configure Firebase:
+1. Install dependencies:
 
-Go to Firebase Console.
-Create a project (e.g., "eplq-project").
-Enable Email/Password authentication.
-Create a Firestore database in test mode.
-In Project Settings, add a web app and copy the firebaseConfig object.
-Generate a service account key (JSON) from Project Settings > Service accounts.
-Create .env.local in the project root with the following (replace with your values):NEXT_PUBLIC_FIREBASE_API_KEY=your-apiKey
-NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=your-authDomain
-NEXT_PUBLIC_FIREBASE_PROJECT_ID=your-projectId
-NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=your-storageBucket
-NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your-messagingSenderId
-NEXT_PUBLIC_FIREBASE_APP_ID=your-appId
-FIREBASE_PROJECT_ID=your-project_id-from-json
-FIREBASE_PRIVATE_KEY_ID=your-private_key_id
-FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nYourPrivateKeyWithNewlines\n-----END PRIVATE KEY-----\n"
-FIREBASE_CLIENT_EMAIL=your-client_email
-FIREBASE_CLIENT_ID=your-client_id
+   ```bash
+   npm install
+   ```
 
+2. Copy `.env.example` to `.env.local` and fill in the six Firebase web configuration values plus the three Firebase Admin values.
 
+   ```bash
+   cp .env.example .env.local
+   ```
 
+   Windows PowerShell:
 
-Run Locally:
-npm run dev
+   ```powershell
+   Copy-Item .env.example .env.local
+   ```
 
-Open http://localhost:3000 in your browser.
+   Use `FIREBASE_PRIVATE_KEY` from the service account JSON. If you paste a multiline key into `.env.local`, represent newlines as `\n`. Do not commit `.env.local` or the service-account JSON.
 
+3. In Firebase Console, enable **Authentication → Sign-in method → Email/Password** and create a Firestore database.
 
-Project Workflow
+4. Publish the rules from `firestore.rules` in Firebase Console → Firestore Database → Rules. The client may create its own profile only with role `user`; POI reads/writes are mediated by server API routes.
 
-Register:
+5. Start the app:
 
-Navigate to /register.
-Enter email, password, and select role (admin or user).
-Admin role allows uploading POIs; user role allows searching.
+   ```bash
+   npm run dev
+   ```
 
+   Open `http://localhost:3000`.
 
-Login:
+## Create an administrator
 
-Go to /login and sign in with registered credentials.
-Admins are redirected to /admin/upload, users to /user/search.
+1. Register a normal account through `/register`.
+2. In Firebase Console → Authentication, copy that user's UID.
+3. In Firestore, open `users/{UID}` and change the `role` field from `user` to `admin` manually. Do not add a public role selector to registration.
+4. Sign out and sign back in. The account can now use `/admin/upload`.
 
+## Shared data passphrase
 
-Admin: Upload POIs:
+The admin chooses a data passphrase of at least 12 characters when uploading POIs. Authorized users must receive the same passphrase through a separate trusted channel. It is not stored in Firestore, environment variables, or browser local storage. Losing it means the encrypted POIs cannot be decrypted. Changing it does not re-encrypt existing records automatically. Do not reuse an account password as the data passphrase.
 
-At /admin/upload, enter POI details (name, latitude, longitude, description).
-Data is encrypted client-side and stored in Firestore.
+## POI fields
 
+- `name`: place name
+- `lat`: latitude from -90 to 90
+- `lng`: longitude from -180 to 180
+- `category`: hospital, police, fire_station, pharmacy, restaurant, shelter, atm, park, or other
+- `desc`: description
 
-User: Search POIs:
+## Deploy to Vercel
 
-At /user/search, input your latitude, longitude, and search range (in km).
-App fetches encrypted POIs, decrypts locally, and filters based on distance (Haversine formula).
+1. Push this project to GitHub, ensuring `.env.local`, service account JSON, and secrets are excluded.
+2. Import the repository into Vercel.
+3. Add the six `NEXT_PUBLIC_FIREBASE_*` variables and `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` in Vercel project environment variables.
+4. Redeploy after changing variables. Use HTTPS in production; browser geolocation and Web Crypto require a secure context (localhost is also allowed).
+5. Deploy the Firestore rules from `firestore.rules`.
 
+## API routes
 
-Logout:
+- `POST /api/upload` — requires a Firebase ID token and admin role; accepts encrypted payload only.
+- `GET /api/pois` — requires a valid user/admin token; returns ciphertext records only.
+- `DELETE /api/pois` — requires a valid admin token and `{ "id": "..." }`.
 
-Sign out to return to the home page.
+## Explain the architecture in a presentation
 
+1. The user authenticates through Firebase Authentication.
+2. The API verifies the ID token and checks the Firestore role before privileged actions.
+3. The admin enters POI data and a shared passphrase. The browser derives a key using PBKDF2 and encrypts the payload with AES-256-GCM using a fresh salt and IV.
+4. Firestore stores the ciphertext. The API does not decrypt it.
+5. The user fetches ciphertext and decrypts locally using the shared passphrase.
+6. A quadtree returns candidates from a bounding box. Haversine computes exact spherical distance and the app filters by radius/category locally.
+7. The browser sends neither user coordinates nor the radius/category query to the API. The server does see authenticated requests, account identity, record IDs, and upload metadata.
 
+## Test checklist
 
-Execution
+- [ ] A new registration creates a `users/{uid}` profile with `role: user`.
+- [ ] A regular user cannot call `POST /api/upload` successfully (403).
+- [ ] Admin upload stores an object with `encrypted`, not plaintext POI fields.
+- [ ] The wrong passphrase does not reveal a POI.
+- [ ] Correct passphrase decrypts and displays the uploaded POI.
+- [ ] A search inside the radius includes a POI; one outside is excluded.
+- [ ] The browser's `/api/pois` request does not contain coordinates, radius, or category.
+- [ ] Non-admin DELETE is rejected; admin DELETE succeeds.
+- [ ] Map markers and the radius circle render over HTTPS.
+- [ ] Tampered ciphertext fails authenticated decryption.
 
-Local: Run npm run dev for development.
-Production: Deploy to Vercel:
-Push code to a public GitHub repo.
-Import repo in Vercel dashboard.
-Add environment variables (same as .env.local).
-Deploy to get a public URL (e.g., eplq-project.vercel.app).
+## Security notes
 
-
-
-Code Structure
-
-src/lib/firebase.ts: Initializes Firebase client-side (auth, Firestore).
-src/lib/firebase-admin.ts: Initializes Firebase Admin SDK for server-side API routes.
-src/lib/utils.ts: Contains encryption (AES), decryption, and Haversine distance functions.
-src/app/page.tsx: Home page with register/login links.
-src/app/register/page.tsx: Registration form for admin/user.
-src/app/login/page.tsx: Login form.
-src/app/admin/upload/page.tsx: Admin interface for uploading POIs.
-src/app/user/search/page.tsx: User interface for searching POIs.
-src/app/api/upload/route.ts: API to handle secure POI uploads (admin-only).
-src/app/api/pois/route.ts: API to fetch encrypted POIs for users.
-.env.local: Environment variables for Firebase config.
-
-Logging
-
-Uses console.log for actions (register, login, upload, search, errors).
-Logs are visible in browser console (client-side) or terminal (server-side).
-
-Security and Privacy
-
-User Privacy: User's location and search range are never sent to the server; all filtering is done client-side.
-Data Privacy: POIs are encrypted with AES (CryptoJS) before storage in Firestore.
-Authentication: Firebase Auth secures user sessions; API routes verify tokens and roles.
-Firestore: Test mode for simplicity; production should use rules to restrict access to authenticated users.
-
-Optimizations
-
-Code Level: Modular structure with separate files for components, utilities, and API routes. Reusable encryption/decryption functions.
-Architecture Level: Client-side decryption and filtering minimize server load and ensure privacy. Next.js API routes handle secure operations.
-Performance: For small datasets (10-50 POIs), search takes ~0.9s on client (matches project goal).
-
-Test Cases
-
-Register Admin: Register with role=admin, verify user doc in Firestore with role.
-Login Admin: Login, access /admin/upload (success), /user/search (redirect).
-Upload POI: As admin, upload POI, verify encrypted doc in Firestore pois collection.
-Register User: Register with role=user.
-Login User: Login, access /user/search (success), /admin/upload (redirect).
-Search POIs: Input lat=37.7749, lng=-122.4194, range=10km, verify correct POIs displayed.
-Invalid Decryption: Tamper encrypted data in Firestore, verify search skips invalid POIs.
-Unauthorized Access: As user, attempt to call /api/upload, expect 403 error.
-Performance: With 10 POIs, verify search completes in <1 second.
-Logout: Sign out, verify redirect to home page.
-
-Deployment Justification
-
-Vercel: Chosen for cloud deployment due to seamless Next.js integration, auto-scaling, and free tier. No need for edge/local deployment as this is a web-based LBS accessible globally.
-Firebase: Provides scalable auth and database, with client-side SDK for easy integration and server-side admin SDK for secure API operations.
-
-Challenges
-
-Simplified predicate encryption to basic AES due to time constraints and complexity of research-level crypto in JavaScript.
-No advanced tree index; relies on fetching all POIs (suitable for small datasets).
-Basic UI to prioritize functionality within short timeline.
-
-Evaluation Metrics
-
-Safe: No harmful operations; secure auth and encryption.
-Testable: Modular code supports unit tests (e.g., test encryption, distance calc).
-Maintainable: Clear file structure, reusable functions.
-Portable: Runs on any OS with Node.js; no OS-specific dependencies.
-
-Technologies
-
-Next.js: React framework for frontend and backend API routes.
-Firebase: Authentication and Firestore for user management and POI storage.
-CryptoJS: AES encryption for POI data.
-Tailwind CSS: Simple, responsive styling.
-
-Contributing
-
-Fork the repo, create a branch, and submit a pull request with clear descriptions.
-Follow coding standards: TypeScript, ESLint, modular design.
-
-License
-MIT License. See LICENSE file (add if needed).
+AES-GCM is authenticated encryption, not predicate-only encryption. The shared passphrase is a prototype key-distribution mechanism; any authorized holder can decrypt all POIs they download. For stronger deployments, implement a vetted searchable/predicate encryption construction with a defined threat model and independently reviewed design. Do not describe this prototype as reproducing the original EPLQ cryptosystem.
